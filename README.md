@@ -52,6 +52,13 @@ map.set(d, Ternary::Pos);
 - **Security** — deep nesting as an attack surface (stack overflow, confusion attacks)
 - **Game engines** — nested coordinate systems with pressure-based LOD transitions
 
+## See Also
+- **ternary-complexity** — related
+- **ternary-entropy** — related
+- **ternary-fitness** — related
+- **ternary-gauge** — related
+- **ternary-metrics** — related
+
 ## Install
 
 ```bash
