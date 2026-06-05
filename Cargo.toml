@@ -1,0 +1,6 @@
+[package]
+name = "ternary-depth"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Depth measurement and pressure modeling for nested ternary systems with safe layer transitions"
