@@ -1,89 +1,130 @@
-# Ternary Depth — Layered Abstraction and Pressure Modeling for Nested Systems
+# Ternary Depth
 
-**Ternary Depth** models how constructs at different layers of abstraction interact within nested ternary systems. It provides depth tracking (surface → abyssal), computational pressure measurement between layers, safe transition enforcement, and characterization of the **abyssal zone** where normal rules break down — all using ternary values {-1, 0, +1} to classify layer health.
+Depth measurement and **pressure modeling for nested ternary systems** — measuring computational pressure at various abstraction layers, enabling safe transitions between depth levels, and characterizing the deepest zones (abyssal) where normal rules may not hold.
 
 ## Why It Matters
 
-Complex systems are nested: functions call functions, modules contain modules, fleets contain nodes contain GPUs. Understanding the depth structure — which layers are healthy, which are under pressure, where communication breaks down — is essential for debugging and optimization. This crate provides the formal vocabulary: `Depth` tracks position in the hierarchy, `Pressure` measures computational stress between layers, and `SafeTransition` enforces that layer changes don't corrupt state. Without depth modeling, nested system failures are opaque — you know something broke but not which layer.
+Nested systems — whether call stacks, nested ternary agent hierarchies, or layered abstraction architectures — exhibit **pressure gradients**. Deeper layers bear more load: more context, more accumulated state, more interaction complexity. Without a formal model of depth and pressure, two failure modes emerge:
+
+1. **Decompression sickness**: Jumping from deep to surface too quickly causes state corruption (the software equivalent of nitrogen bubbles in blood)
+2. **Abyssal anomalies**: At extreme depths, normal assumptions break — invariants may not hold, recursion limits are hit, stack overflows occur
+
+This crate provides the mathematical framework to reason about these phenomena. The `Depth` type tracks position in a nested hierarchy, `PressureGauge` measures computational load, and `PressureDecompression` plans safe multi-step transitions.
 
 ## How It Works
 
-### Depth Tracking
+### Depth Model
 
-A `Depth` value carries `level` (current depth) and `max_level` (boundary). The surface is level 0; deeper levels have higher numbers. Movement is controlled:
+A `Depth` is a level/max_level pair. Operations form a monoid:
 
-- `descend()` → Depth + 1 (returns None if at max)
-- `ascend()` → Depth - 1 (returns None if at surface)
+$$\text{descend}(d) = \begin{cases} d + 1 & d < d_{\max} \\ \text{None} & \text{otherwise} \end{cases}$$
 
-Both are O(1). The max_level prevents infinite recursion — each subsystem declares its maximum nesting depth.
+$$\text{ascend}(d) = \begin{cases} d - 1 & d > 0 \\ \text{None} & \text{otherwise} \end{cases}$$
 
-### Layer Classification
-
-Each layer is classified with a ternary health value:
-- **+1 (Stable)**: Layer is functioning normally
-- **0 (Transitional)**: Layer is between states, undergoing change
-- **-1 (Critical)**: Layer is under stress, may fail
+Depth fraction: $\phi(d) = d / d_{\max}$, with $\phi \in [0, 1]$.
 
 ### Pressure Model
 
-Computational pressure measures the flow of information between adjacent layers. When upper layers demand more than lower layers can provide, pressure builds. The pressure between layer i and layer i+1 is:
+The pressure at depth $d$ with load $L$ is:
 
-```
-P(i, i+1) = demand(i) - supply(i+1)
-```
+$$P(d, L) = P_0 + L \cdot \phi(d) \cdot S$$
 
-High pressure triggers SafeTransition enforcement: the system must resolve the pressure before allowing further descent.
+where $P_0$ is baseline pressure and $S$ is sensitivity. The ternary classification:
+
+$$\text{class}(P) = \begin{cases} +1 & P > 1.5 \cdot P_0 \;\text{(over-pressure)} \\ -1 & P < 0.5 \cdot P_0 \;\text{(under-pressure)} \\ 0 & \text{otherwise (nominal)} \end{cases}$$
+
+### Depth Charge (Perturbation)
+
+A depth charge delivers a targeted perturbation at a specific depth, attenuating with distance:
+
+$$E(d) = \frac{I}{1 + |d - d_{\text{target}}|}$$
+
+where $I \in [0, 1]$ is the charge intensity. The $1/(1+d)$ attenuation ensures perturbations are local — a charge at depth 5 has negligible effect at depth 0.
+
+### Decompression Planning
+
+Safe ascent requires **staged decompression** — pausing at intermediate depths to allow state to stabilize. The default plan stops every 3 levels:
+
+$$\text{stops} = \{d : d \bmod 3 = 0 \;\text{or} \; d = 0\}$$
+
+This mirrors diving decompression tables, where ascending too fast causes dissolved gases to form bubbles.
 
 ### Abyssal Zone
 
-The deepest layers (near max_level) form the "abyssal zone" where normal rules break down. In the abyssal zone:
-- Pressure is maximum
-- Transitions are irreversible (cannot ascend safely)
-- Ternary values may oscillate (indicating instability)
+The abyssal zone is $[d_{\text{start}}, d_{\max}]$ where anomalies are recorded and safety degrades linearly:
 
-The system must detect and flag abyssal conditions before they cause cascading failures.
+$$S_{\text{abyssal}}(d) = 1 - \frac{d - d_{\text{start}}}{d_{\max} - d_{\text{start}}}$$
+
+At $d_{\text{start}}$, safety is 1.0. At $d_{\max}$, safety is 0.0.
+
+### Complexity
+
+| Operation | Time |
+|-----------|------|
+| `Depth::descend() / ascend()` | O(1) |
+| `PressureGauge::measure(depth, load)` | O(1) |
+| `DepthCharge::effect_at(depth)` | O(1) |
+| `PressureDecompression::plan(from)` | O(D) — D = depth levels |
+| `AbyssalZone::safety_factor(depth)` | O(1) |
+| `Bathyscope::observe(depth, note)` | O(1) amortized |
 
 ## Quick Start
 
 ```rust
-use ternary_depth::{Depth, Ternary};
+use ternary_depth::*;
 
+// Depth navigation
 let surface = Depth::surface();
-assert!(surface.is_surface());
+let deep = Depth::new(10, 10);
+assert!((deep.fraction() - 1.0).abs() < 0.01);
 
-let deeper = surface.descend().unwrap();
-assert_eq!(deeper.level, 1);
+// Pressure measurement
+let gauge = PressureGauge::new(1.0, 2.0);
+let reading = gauge.measure(Depth::new(5, 10), 1.5);
+assert!(reading.raw_pressure > 1.0);
 
-let max_depth = Depth::new(0, 5);
-let mut current = max_depth;
-for _ in 0..5 {
-    current = current.descend().unwrap_or(current);
-}
-assert!(current.is_max()); // At level 5, can't go deeper
-```
+// Decompression plan
+let plan = PressureDecompression::plan(Depth::new(10, 10));
+// Stops at levels 9, 6, 3, 0 (every 3rd level)
 
-```bash
-cargo add ternary-depth
+// Depth charges — targeted perturbations
+let charge = DepthCharge::new(5, 0.8, Ternary::Pos);
+assert!((charge.effect_at(5) - 0.8).abs() < 0.01);
+assert!(charge.effect_at(0) < charge.effect_at(5)); // attenuates
+
+// Abyssal zone
+let mut abyss = AbyssalZone::new(8, 12);
+abyss.record_anomaly("infinite recursion at depth 9");
+assert!((abyss.safety_factor(10) - 0.5).abs() < 0.01);
 ```
 
 ## API
 
-| Type / Function | Description |
-|---|---|
-| `Depth` | `{ level, max_level }` with `descend()`, `ascend()`, `is_surface()`, `is_max()` |
-| `Ternary` | Layer health: `Neg(-1)`, `Zero(0)`, `Pos(1)` |
-| `Pressure` | Computational stress between layers |
+| Type | Description |
+|------|-------------|
+| `Depth` | Level tracker with descend/ascend |
+| `PressureGauge` | Measure + classify computational pressure |
+| `PressureReading` | Raw pressure + ternary classification |
+| `DepthCharge` | Targeted perturbation with distance attenuation |
+| `Bathyscope` | Non-invasive deep-layer observer |
+| `AbyssalZone` | Anomaly tracking for extreme depths |
+| `PressureDecompression` | Staged ascent planning |
 
 ## Architecture Notes
 
-In **SuperInstance**, depth models the abstraction hierarchy from fleet → room → agent → GPU → kernel. The γ + η = C conservation law applies at each layer boundary: what flows down as γ (compute demand) must be balanced by η (resource availability) at the receiving layer. The abyssal zone corresponds to the hardware-software boundary where abstractions leak. See [Architecture](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md).
+The depth system models the **γ + η = C** conservation principle through pressure invariants:
+
+- **γ (structure)**: the depth hierarchy — the fixed topology of layers from surface to abyssal
+- **η (dynamics)**: perturbations — depth charges, loads, and state transitions that stress the hierarchy
+- **C (conservation)**: the pressure invariant — total computational pressure is conserved across the hierarchy, and decompression ensures it is redistributed safely
+
+The abyssal zone represents the **breakdown of C** — the region where conservation laws fail. Anomalies are η-events that violate the expected γ structure. The safety factor quantifies how close the system is to losing its conservation guarantees.
 
 ## References
 
-- Simon, Herbert A. "The Architecture of Complexity," *Proceedings of the American Philosophical Society*, 106(6), 1962 — hierarchical systems.
-- Tanenbaum, Andrew. *Computer Networks*, 5th ed., 2010 — layered protocol stacks.
-| Ousterhout, John. *A Philosophy of Software Design*, Yaknyam Press, 2018 — deep modules and abstraction.
+- Dijkstra, E.W. (1968). *Go To Statement Considered Harmful*. CACM — Structured depth in software.
+| Bohm, C. & Jacopini, G. (1966). *Flow Diagrams, Turing Machines and Languages with Only Two Formation Rules*. — Structured programming and nesting depth.
+| Boyes, R. (1908). *Decompression Sickness*. — The diving analogy for staged transitions.
+| Abadi, M. & Lamport, L. (1991). *The Existence of Refinement Mappings*. — Layered abstractions and invariants.
 
-## License
-
-MIT
+## License: MIT
