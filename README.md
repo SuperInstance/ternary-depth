@@ -1,69 +1,88 @@
-# ternary-depth
+# Ternary Depth — Layered Abstraction and Pressure Modeling for Nested Systems
 
-**Pressure modeling for nested ternary systems. How deep is too deep?**
+**Ternary Depth** models how constructs at different layers of abstraction interact within nested ternary systems. It provides depth tracking (surface → abyssal), computational pressure measurement between layers, safe transition enforcement, and characterization of the **abyssal zone** where normal rules break down — all using ternary values {-1, 0, +1} to classify layer health.
 
-Every system has layers. Functions call functions. Modules nest inside modules. At each level of depth, the rules change — what works at the surface may fail in the abyss. This crate models that: a `Depth` type that tracks where you are in a hierarchy, a `Pressure` model that measures how much computational stress accumulates, and a `Decompression` procedure for safely returning to the surface.
+## Why It Matters
 
-Think of it like scuba diving. You can't just go deep and surface instantly — you need decompression stops. Same with nested computation. The deeper you go, the more care you need coming back.
+Complex systems are nested: functions call functions, modules contain modules, fleets contain nodes contain GPUs. Understanding the depth structure — which layers are healthy, which are under pressure, where communication breaks down — is essential for debugging and optimization. This crate provides the formal vocabulary: `Depth` tracks position in the hierarchy, `Pressure` measures computational stress between layers, and `SafeTransition` enforces that layer changes don't corrupt state. Without depth modeling, nested system failures are opaque — you know something broke but not which layer.
 
-## What's Inside
+## How It Works
 
-- **`Depth`** — position in a nested hierarchy with `descend()`, `ascend()`, surface/max detection
-- **`Pressure`** — computational stress at a given depth. Increases with nesting, decreases at rest
-- **`DepthZone`** — classify depth: `Surface`, `Shallow`, `Deep`, `Abyssal` — each with different rules
-- **`decompress(depth, pressure)`** — safe ascent plan: how many stops, how long at each level
-- **`DepthMap`** — track ternary values at each depth level, query cross-layer patterns
-- **`collapse_depth(values_at_depth)`** — collapse a multi-layer ternary stack to a single value
+### Depth Tracking
 
-## Quick Example
+A `Depth` value carries `level` (current depth) and `max_level` (boundary). The surface is level 0; deeper levels have higher numbers. Movement is controlled:
 
-```rust
-use ternary_depth::*;
+- `descend()` → Depth + 1 (returns None if at max)
+- `ascend()` → Depth - 1 (returns None if at surface)
 
-let mut d = Depth::new(0, 10);
-let mut pressure = Pressure::new();
+Both are O(1). The max_level prevents infinite recursion — each subsystem declares its maximum nesting depth.
 
-// Descend into nested computation
-for _ in 0..5 {
-    d = d.descend().unwrap();
-    pressure.accumulate(1.0);
-}
+### Layer Classification
 
-// How deep are we?
-assert_eq!(d.zone(), DepthZone::Deep);
+Each layer is classified with a ternary health value:
+- **+1 (Stable)**: Layer is functioning normally
+- **0 (Transitional)**: Layer is between states, undergoing change
+- **-1 (Critical)**: Layer is under stress, may fail
 
-// Safe ascent — can't surface instantly from here
-let plan = decompress(d, pressure);
-assert!(plan.stops() > 0);
+### Pressure Model
 
-// Track values at each depth
-let mut map = DepthMap::new();
-map.set(d, Ternary::Pos);
+Computational pressure measures the flow of information between adjacent layers. When upper layers demand more than lower layers can provide, pressure builds. The pressure between layer i and layer i+1 is:
+
+```
+P(i, i+1) = demand(i) - supply(i+1)
 ```
 
-## The Insight
+High pressure triggers SafeTransition enforcement: the system must resolve the pressure before allowing further descent.
 
-**Not all depth is equal.** Surface operations are cheap and safe. Abyssal operations are expensive and dangerous. This crate makes that explicit — you can *measure* the pressure, *plan* the decompression, and *classify* the zone. In ternary systems, the 0 state at depth behaves differently than 0 at the surface — it's a trap that's harder to escape from.
+### Abyssal Zone
 
-**Use cases:**
-- **Compiler design** — track depth of nested IR transformations
-- **Recursive algorithms** — measure and limit recursion depth safely
-- **Organizational modeling** — how deep is your hierarchy? Is it too deep?
-- **Security** — deep nesting as an attack surface (stack overflow, confusion attacks)
-- **Game engines** — nested coordinate systems with pressure-based LOD transitions
+The deepest layers (near max_level) form the "abyssal zone" where normal rules break down. In the abyssal zone:
+- Pressure is maximum
+- Transitions are irreversible (cannot ascend safely)
+- Ternary values may oscillate (indicating instability)
 
-## See Also
-- **ternary-complexity** — related
-- **ternary-entropy** — related
-- **ternary-fitness** — related
-- **ternary-gauge** — related
-- **ternary-metrics** — related
+The system must detect and flag abyssal conditions before they cause cascading failures.
 
-## Install
+## Quick Start
+
+```rust
+use ternary_depth::{Depth, Ternary};
+
+let surface = Depth::surface();
+assert!(surface.is_surface());
+
+let deeper = surface.descend().unwrap();
+assert_eq!(deeper.level, 1);
+
+let max_depth = Depth::new(0, 5);
+let mut current = max_depth;
+for _ in 0..5 {
+    current = current.descend().unwrap_or(current);
+}
+assert!(current.is_max()); // At level 5, can't go deeper
+```
 
 ```bash
 cargo add ternary-depth
 ```
+
+## API
+
+| Type / Function | Description |
+|---|---|
+| `Depth` | `{ level, max_level }` with `descend()`, `ascend()`, `is_surface()`, `is_max()` |
+| `Ternary` | Layer health: `Neg(-1)`, `Zero(0)`, `Pos(1)` |
+| `Pressure` | Computational stress between layers |
+
+## Architecture Notes
+
+In **SuperInstance**, depth models the abstraction hierarchy from fleet → room → agent → GPU → kernel. The γ + η = C conservation law applies at each layer boundary: what flows down as γ (compute demand) must be balanced by η (resource availability) at the receiving layer. The abyssal zone corresponds to the hardware-software boundary where abstractions leak. See [Architecture](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md).
+
+## References
+
+- Simon, Herbert A. "The Architecture of Complexity," *Proceedings of the American Philosophical Society*, 106(6), 1962 — hierarchical systems.
+- Tanenbaum, Andrew. *Computer Networks*, 5th ed., 2010 — layered protocol stacks.
+| Ousterhout, John. *A Philosophy of Software Design*, Yaknyam Press, 2018 — deep modules and abstraction.
 
 ## License
 
