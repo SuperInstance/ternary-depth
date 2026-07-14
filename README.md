@@ -75,24 +75,28 @@ use ternary_depth::*;
 
 // Depth navigation
 let surface = Depth::surface();
+assert!(surface.is_surface());
 let deep = Depth::new(10, 10);
 assert!((deep.fraction() - 1.0).abs() < 0.01);
 
-// Pressure measurement
+// Pressure measurement: P = baseline + load * fraction * sensitivity
+// 1.0 + 1.5 * (5/10) * 2.0 = 2.5
 let gauge = PressureGauge::new(1.0, 2.0);
 let reading = gauge.measure(Depth::new(5, 10), 1.5);
-assert!(reading.raw_pressure > 1.0);
+assert!((reading.raw_pressure - 2.5).abs() < 0.01);
 
-// Decompression plan
+// Decompression plan: stops at levels 9, 6, 3, 0 (every 3rd level)
 let plan = PressureDecompression::plan(Depth::new(10, 10));
-// Stops at levels 9, 6, 3, 0 (every 3rd level)
+let stops: Vec<u32> = plan.steps.iter().map(|s| s.level).collect();
+assert_eq!(stops, vec![9, 6, 3, 0]);
+assert_eq!(plan.total_levels(), 10); // depth we decompressed from
 
-// Depth charges — targeted perturbations
+// Depth charges — targeted perturbations with distance attenuation
 let charge = DepthCharge::new(5, 0.8, Ternary::Pos);
-assert!((charge.effect_at(5) - 0.8).abs() < 0.01);
-assert!(charge.effect_at(0) < charge.effect_at(5)); // attenuates
+assert!((charge.effect_at(5) - 0.8).abs() < 0.01); // full strength at target
+assert!(charge.effect_at(0) < charge.effect_at(5)); // attenuates with distance
 
-// Abyssal zone
+// Abyssal zone: safety degrades linearly from 1.0 at depth 8 to 0.0 at depth 12
 let mut abyss = AbyssalZone::new(8, 12);
 abyss.record_anomaly("infinite recursion at depth 9");
 assert!((abyss.safety_factor(10) - 0.5).abs() < 0.01);
@@ -123,8 +127,8 @@ The abyssal zone represents the **breakdown of C** — the region where conserva
 ## References
 
 - Dijkstra, E.W. (1968). *Go To Statement Considered Harmful*. CACM — Structured depth in software.
-| Bohm, C. & Jacopini, G. (1966). *Flow Diagrams, Turing Machines and Languages with Only Two Formation Rules*. — Structured programming and nesting depth.
-| Boyes, R. (1908). *Decompression Sickness*. — The diving analogy for staged transitions.
-| Abadi, M. & Lamport, L. (1991). *The Existence of Refinement Mappings*. — Layered abstractions and invariants.
+- Böhm, C. & Jacopini, G. (1966). *Flow Diagrams, Turing Machines and Languages with Only Two Formation Rules*. — Structured programming and nesting depth.
+- Boycott, A.E., Damant, G.C.C. & Haldane, J.S. (1908). *The Prevention of Compressed-Air Illness*. — The diving analogy for staged decompression.
+- Abadi, M. & Lamport, L. (1991). *The Existence of Refinement Mappings*. — Layered abstractions and invariants.
 
 ## License: MIT
