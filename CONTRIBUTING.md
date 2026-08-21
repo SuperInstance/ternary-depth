@@ -23,4 +23,4 @@ Be respectful, be constructive.
 
 ## License
 
-By contributing, you agree your work is dual-licensed under MIT OR Apache-2.0.
+By contributing, you agree your work is licensed under the MIT License, consistent with the [LICENSE](LICENSE) file and the `license = "MIT"` field in `Cargo.toml`.
